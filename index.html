@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>汉字手写工具</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro SC", "PingFang SC",
+          "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+        background: #f5f7fb;
+        color: #222;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .app {
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.15);
+        padding: 24px 28px 28px;
+        max-width: 480px;
+        width: 100%;
+      }
+
+      .title {
+        font-size: 18px;
+        font-weight: 600;
+        text-align: center;
+        margin-bottom: 4px;
+      }
+
+      .subtitle {
+        font-size: 13px;
+        color: #6b7280;
+        text-align: center;
+        margin-bottom: 16px;
+      }
+
+      .canvas-wrapper {
+        position: relative;
+        margin: 0 auto 18px;
+        width: 320px;
+        height: 320px;
+        border-radius: 12px;
+        background: radial-gradient(circle at top left, #f9fafb, #e5e7eb);
+        padding: 10px;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: 10px;
+        background: #ffffff;
+        box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.4);
+        cursor: crosshair;
+      }
+
+      .hint {
+        font-size: 12px;
+        color: #9ca3af;
+        text-align: center;
+        margin-bottom: 10px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+      }
+
+      button {
+        flex: 1;
+        border-radius: 999px;
+        border: none;
+        padding: 10px 0;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      #clearBtn {
+        background: #f3f4f6;
+        color: #374151;
+      }
+
+      #clearBtn:hover {
+        background: #e5e7eb;
+      }
+
+      #saveBtn {
+        background: linear-gradient(135deg, #2563eb, #4f46e5);
+        color: #ffffff;
+        box-shadow: 0 10px 25px rgba(37, 99, 235, 0.35);
+      }
+
+      #saveBtn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 14px 30px rgba(37, 99, 235, 0.5);
+      }
+
+      #saveBtn:active {
+        transform: translateY(0);
+        box-shadow: 0 6px 18px rgba(37, 99, 235, 0.4);
+      }
+
+      .note {
+        margin-top: 10px;
+        font-size: 11px;
+        color: #9ca3af;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="title">汉字手写工具</div>
+      <div class="subtitle">在下方米字格中用触摸板/鼠标书写汉字</div>
+
+      <div class="canvas-wrapper">
+        <canvas id="displayCanvas" width="512" height="512"></canvas>
+      </div>
+
+      <div class="hint">先在起笔位置点击，然后按住拖动即可书写。</div>
+
+      <div class="controls">
+        <button id="clearBtn" type="button">清除</button>
+        <button id="saveBtn" type="button">保存 PNG</button>
+      </div>
+
+      <div class="note">
+        保存为白底黑字的 PNG 图片，笔画按实际书写内容生成。
+      </div>
+    </div>
+
+    <script>
+      // 可见画布（带米字格）
+      const displayCanvas = document.getElementById("displayCanvas");
+      const dctx = displayCanvas.getContext("2d");
+
+      // 隐藏画布（仅白底黑字，用于导出 PNG）
+      const hiddenCanvas = document.createElement("canvas");
+      hiddenCanvas.width = displayCanvas.width;
+      hiddenCanvas.height = displayCanvas.height;
+      const hctx = hiddenCanvas.getContext("2d");
+
+      const clearBtn = document.getElementById("clearBtn");
+      const saveBtn = document.getElementById("saveBtn");
+
+      let isDrawing = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      // 初始化：清空并画米字格
+      function initCanvas() {
+        // 显示画布背景
+        dctx.fillStyle = "#ffffff";
+        dctx.fillRect(0, 0, displayCanvas.width, displayCanvas.height);
+
+        drawMiGrid(dctx, displayCanvas.width, displayCanvas.height);
+
+        // 隐藏画布：白底，不画米字格
+        hctx.fillStyle = "#ffffff";
+        hctx.fillRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+      }
+
+      // 画米字格
+      function drawMiGrid(ctx, w, h) {
+        const borderColor = "#9ca3af";
+        const midLineColor = "#d1d5db";
+        const diagColor = "#e5e7eb";
+
+        ctx.save();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = borderColor;
+        ctx.strokeRect(0, 0, w, h);
+
+        // 中线
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = midLineColor;
+        ctx.beginPath();
+        ctx.moveTo(w / 2, 0);
+        ctx.lineTo(w / 2, h);
+        ctx.moveTo(0, h / 2);
+        ctx.lineTo(w, h / 2);
+        ctx.stroke();
+
+        // 对角线
+        ctx.strokeStyle = diagColor;
+        ctx.setLineDash([6, 8]);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(w, h);
+        ctx.moveTo(w, 0);
+        ctx.lineTo(0, h);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      // 将窗口坐标转换为 canvas 内坐标
+      function getCanvasPos(evt, canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const x = evt.clientX - rect.left;
+        const y = evt.clientY - rect.top;
+        // 由于设置了 CSS 缩放，这里要按比例映射到实际像素坐标
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return {
+          x: x * scaleX,
+          y: y * scaleY,
+        };
+      }
+
+      function startDraw(evt) {
+        evt.preventDefault();
+        const pos = getCanvasPos(
+          evt.touches ? evt.touches[0] : evt,
+          displayCanvas
+        );
+        isDrawing = true;
+        lastX = pos.x;
+        lastY = pos.y;
+      }
+
+      function draw(evt) {
+        if (!isDrawing) return;
+        evt.preventDefault();
+
+        const point = evt.touches ? evt.touches[0] : evt;
+        const pos = getCanvasPos(point, displayCanvas);
+
+        // 画到显示画布
+        dctx.save();
+        dctx.lineCap = "round";
+        dctx.lineJoin = "round";
+        dctx.strokeStyle = "#111827"; // 深色笔画
+        dctx.lineWidth = 10;
+        dctx.beginPath();
+        dctx.moveTo(lastX, lastY);
+        dctx.lineTo(pos.x, pos.y);
+        dctx.stroke();
+        dctx.restore();
+
+        // 同步画到隐藏画布（只保留白底黑字）
+        hctx.save();
+        hctx.lineCap = "round";
+        hctx.lineJoin = "round";
+        hctx.strokeStyle = "#000000";
+        hctx.lineWidth = 10;
+        hctx.beginPath();
+        hctx.moveTo(lastX, lastY);
+        hctx.lineTo(pos.x, pos.y);
+        hctx.stroke();
+        hctx.restore();
+
+        lastX = pos.x;
+        lastY = pos.y;
+      }
+
+      function endDraw(evt) {
+        if (!isDrawing) return;
+        evt.preventDefault();
+        isDrawing = false;
+      }
+
+      // 绑定鼠标事件（适用于触摸板+浏览器）
+      displayCanvas.addEventListener("mousedown", startDraw);
+      displayCanvas.addEventListener("mousemove", draw);
+      window.addEventListener("mouseup", endDraw);
+
+      // 绑定触摸事件（手机/平板可用，也兼容部分触摸板手势）
+      displayCanvas.addEventListener("touchstart", startDraw, { passive: false });
+      displayCanvas.addEventListener("touchmove", draw, { passive: false });
+      displayCanvas.addEventListener("touchend", endDraw);
+      displayCanvas.addEventListener("touchcancel", endDraw);
+
+      // 清除按钮
+      clearBtn.addEventListener("click", () => {
+        initCanvas();
+      });
+
+      // 保存按钮：从隐藏画布导出白底黑字 PNG
+      saveBtn.addEventListener("click", () => {
+        const link = document.createElement("a");
+        const timestamp = new Date()
+          .toISOString()
+          .replace(/[:.]/g, "-")
+          .slice(0, 19);
+        link.download = `handwrite-${timestamp}.png`;
+        link.href = hiddenCanvas.toDataURL("image/png");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        // 保存后自动清空画布，方便下一次书写
+        initCanvas();
+      });
+
+      initCanvas();
+    </script>
+  </body>
+</html>
+
+
